@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1DA3C8C9169D1260003DFDBC /* KWFontPicker.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DA3C8C6169D1260003DFDBC /* KWFontPicker.m */; };
+		1DA3C8CA169D1260003DFDBC /* KWTextEditor.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DA3C8C8169D1260003DFDBC /* KWTextEditor.m */; };
 		1DD9FA7B169D084500DFF1C9 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1DD9FA7A169D084500DFF1C9 /* UIKit.framework */; };
 		1DD9FA7D169D084500DFF1C9 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1DD9FA7C169D084500DFF1C9 /* Foundation.framework */; };
 		1DD9FA7F169D084500DFF1C9 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1DD9FA7E169D084500DFF1C9 /* CoreGraphics.framework */; };
@@ -21,6 +23,10 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1DA3C8C5169D1260003DFDBC /* KWFontPicker.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = KWFontPicker.h; sourceTree = "<group>"; };
+		1DA3C8C6169D1260003DFDBC /* KWFontPicker.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KWFontPicker.m; sourceTree = "<group>"; };
+		1DA3C8C7169D1260003DFDBC /* KWTextEditor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = KWTextEditor.h; sourceTree = "<group>"; };
+		1DA3C8C8169D1260003DFDBC /* KWTextEditor.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KWTextEditor.m; sourceTree = "<group>"; };
 		1DD9FA76169D084500DFF1C9 /* KWFontPicker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KWFontPicker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1DD9FA7A169D084500DFF1C9 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		1DD9FA7C169D084500DFF1C9 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
@@ -53,9 +59,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		1DA3C8C4169D1260003DFDBC /* src */ = {
+			isa = PBXGroup;
+			children = (
+				1DA3C8C5169D1260003DFDBC /* KWFontPicker.h */,
+				1DA3C8C6169D1260003DFDBC /* KWFontPicker.m */,
+				1DA3C8C7169D1260003DFDBC /* KWTextEditor.h */,
+				1DA3C8C8169D1260003DFDBC /* KWTextEditor.m */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
 		1DD9FA6B169D084500DFF1C9 = {
 			isa = PBXGroup;
 			children = (
+				1DA3C8C4169D1260003DFDBC /* src */,
 				1DD9FA80169D084500DFF1C9 /* KWFontPicker */,
 				1DD9FA79169D084500DFF1C9 /* Frameworks */,
 				1DD9FA77169D084500DFF1C9 /* Products */,
@@ -177,6 +195,8 @@
 				1DD9FA87169D084500DFF1C9 /* main.m in Sources */,
 				1DD9FA8B169D084500DFF1C9 /* DEMOAppDelegate.m in Sources */,
 				1DD9FA97169D084500DFF1C9 /* DEMOViewController.m in Sources */,
+				1DA3C8C9169D1260003DFDBC /* KWFontPicker.m in Sources */,
+				1DA3C8CA169D1260003DFDBC /* KWTextEditor.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -293,6 +313,7 @@
 				1DD9FA9C169D084500DFF1C9 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
