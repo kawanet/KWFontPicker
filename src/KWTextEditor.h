@@ -26,25 +26,24 @@ typedef NS_ENUM(NSInteger, KWTextEditorMode) {
 @property (readonly) UIBarButtonItem *keyboardButton;
 @property (readonly) UIBarButtonItem *fontButton;
 @property (readonly) UIBarButtonItem *closeButton;
-@property BOOL keyboardEnabled;
-@property BOOL fontPickerEnabled;
 
 -(KWTextEditor*)initWithTextView:(UITextView*)textView;
 -(void)showInView:(UIView*)view;
 -(void)dismiss;
 
+-(KWTextEditorMode)editorMode;
 -(void)setEditorMode:(KWTextEditorMode)editorMode;
--(void)setTapEditorMode:(KWTextEditorMode)editorMode;
 
--(void)setKeyboardDidShowHandler:(void(^)(void))handler;
--(void)setKeyboardDidHideHandler:(void(^)(void))handler;
-
--(void)setFontPickerDidShowHandler:(void(^)(void))handler;
--(void)setFontPickerDidHideHandler:(void(^)(void))handler;
+-(void)setEditorDidShowHandler:(void(^)(void))handler;
+-(void)setEditorDidHideHandler:(void(^)(void))handler;
 
 -(void)setTextDidChangeHandler:(void(^)(void))handler;
 -(void)setFontDidChangeHandler:(void(^)(void))handler;
 
 -(void)setCloseButtonDidTapHandler:(void(^)(void))handler;
+
+// experimental
+-(void)setFontPickerEnabled:(BOOL)enabled;
+-(void)setKeyboardEnabled:(BOOL)enabled;
 
 @end

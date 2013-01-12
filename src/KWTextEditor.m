@@ -12,19 +12,17 @@ typedef void(^KWTextEditorHandler)(void);
 
 @interface KWTextEditor () <UITextViewDelegate>
 
-@property CGRect lastKeyboardRect;
 @property CGPoint savedContentOffset;
 @property UIEdgeInsets savedScrollInsets;
 @property UIEdgeInsets savedContentInsets;
 @property UIEdgeInsets ourScrollInsets;
 @property UIEdgeInsets ourContentInsets;
 @property BOOL hasSavedInsets;
+@property BOOL isOpening;
+@property BOOL isClosing;
 
-@property (copy) KWTextEditorHandler keyboardDidShowHandler;
-@property (copy) KWTextEditorHandler keyboardDidHideHandler;
-
-@property (copy) KWTextEditorHandler fontPickerDidShowHandler;
-@property (copy) KWTextEditorHandler fontPickerDidHideHandler;
+@property (copy) KWTextEditorHandler editorDidShowHandler;
+@property (copy) KWTextEditorHandler editorDidHideHandler;
 
 @property (copy) KWTextEditorHandler textDidChangeHandler;
 @property (copy) KWTextEditorHandler fontDidChangeHandler;
@@ -33,7 +31,9 @@ typedef void(^KWTextEditorHandler)(void);
 
 @property (nonatomic) KWTextEditorMode editorMode;
 @property (nonatomic) KWTextEditorMode tapEditorMode;
-@property KWTextEditorMode nextEditorMode;
+@property (nonatomic) KWTextEditorMode nextEditorMode;
+@property (nonatomic) BOOL keyboardEnabled;
+@property (nonatomic) BOOL fontPickerEnabled;
 
 - (BOOL) fontPickerIsOpen;
 - (BOOL) keyboardIsOpen;
@@ -44,40 +44,59 @@ typedef void(^KWTextEditorHandler)(void);
 
 @synthesize fontPicker = _fontPicker;
 @synthesize toolbar = _toolbar;
+@synthesize keyboardButton = _keyboardButton;
+@synthesize fontButton = _fontButton;
+@synthesize closeButton = _closeButton;
 
 static CGFloat KWTextEditorAnimationDuration = 0.3;
+static CGFloat KWTextEditorButtonWidth = 80;
+static CGRect latestKeyboardRect;
+
+// currently those notifications are not post for outside of the class
+NSString *const KWTextEditorWillShowNotification = @"KWTextEditorWillShowNotification";
+NSString *const KWTextEditorDidShowNotification = @"KWTextEditorDidShowNotification";
+NSString *const KWTextEditorWillHideNotification = @"KWTextEditorWillHideNotification";
+NSString *const KWTextEditorDidHideNotification = @"KWTextEditorDidHideNotification";
+NSString *const KWTextEditorFrameEndUserInfoKey = @"KWTextEditorFrameEndUserInfoKey";
+NSString *const KWTextEditorAnimationDurationUserInfoKey = @"KWTextEditorAnimationDurationUserInfoKey";
 
 -(KWTextEditor*)initWithTextView:(UITextView*)textView
 {
     self = [self initWithFrame:CGRectZero];
-    self.keyboardEnabled = YES;
-    self.fontPickerEnabled = YES;
-    _editorMode = self.keyboardEnabled ? KWTextEditorModeKeyboard : KWTextEditorModeFontPicker;
-    _tapEditorMode = self.keyboardEnabled ? KWTextEditorModeKeyboard : KWTextEditorModeFontPicker;
+    _fontPickerEnabled = YES;
+    _keyboardEnabled = YES;
+    _hasSavedInsets = NO;
+    _isOpening = NO;
+    _isClosing = NO;
+    _tapEditorMode = KWTextEditorModeKeyboard; // open keyboard on a tap
+    _editorMode = KWTextEditorModeNone; // don't open an editor until a tap
     _textView = textView;
     _textView.delegate = self;
     
-    // TODO: devicec orientation detection
-    // [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
+    // device orientation detection
+    [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
     
     return self;
 }
 
 -(void)dismiss;
 {
+    [self restoreScrollViewAnimated:NO completion:nil];
+    [self removeNotificationObservers];
     _toolbar = nil;
     _fontPicker = nil;
     _textView.delegate = nil;
     _textView = nil;
     _scrollView = nil;
-    [self removeNotificationObservers];
     [self removeFromSuperview];
 }
 
 - (void) addNotificationObservers
 {
-    // TODO: devicec orientation detection
-    // [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(deviceOrientationDidChange:) name:UIDeviceOrientationDidChangeNotification object:nil];
+    // NSLog(@"[%d] addNotificationObservers: %d (o:%d,c:%d)", self.tag, _editorMode, self.isOpening, self.isClosing);
+    
+    // device orientation detection
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(deviceOrientationDidChange:) name:UIDeviceOrientationDidChangeNotification object:nil];
     
     // phonecall statusbar
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(statusBarWillChange:) name:UIApplicationWillChangeStatusBarFrameNotification object:nil];
@@ -89,65 +108,63 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardDidChange:) name:UIKeyboardDidChangeFrameNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardDidHide:) name:UIKeyboardDidHideNotification object:nil];
+    
+    // other KWTextEditor instances
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(textEditorWillShow:) name:KWTextEditorWillShowNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(textEditorDidShow:) name:KWTextEditorDidShowNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(textEditorWillHide:) name:KWTextEditorWillHideNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(textEditorDidHide:) name:KWTextEditorDidHideNotification object:nil];
 }
 
 - (void) removeNotificationObservers
 {
+    // NSLog(@"[%d] removeNotificationObservers: %d (o:%d,c:%d)", self.tag, _editorMode, self.isOpening, self.isClosing);
+    
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (void) statusBarWillChange:(NSNotification *)notification
 {
-    // remove any controls once before superview changes its size
-    [self hideControls];
+    [self closeTextEditor];
 }
 
 - (void) statusBarDidChange:(NSNotification *)notification
 {
-    // compare stasubar size between pre-notification and post-notification (current)
-    NSValue *rectValue = notification.userInfo[UIApplicationStatusBarFrameUserInfoKey];
-    CGRect oldFrame;
-    [rectValue getValue:&oldFrame];
-    CGRect newFrame = [[UIApplication sharedApplication] statusBarFrame];
-    
-    // redraw controls when phonecall etc but not rotation
-    if (oldFrame.size.height != newFrame.size.height && oldFrame.size.width == newFrame.size.width) {
-        self.editorMode = self.editorMode;
-    }
+    [self closeTextEditor];
 }
 
 - (void) deviceOrientationDidChange:(NSNotification *)notification
 {
-    // reopen controls
-    self.editorMode = self.editorMode;
+    [self closeTextEditor];
 }
 
 - (BOOL)textViewShouldBeginEditing:(UITextView *)textView
 {
-    switch (self.editorMode) {
-        case KWTextEditorModeKeyboard:
-            // allow open keyboard
-            return YES;
-            
-        case KWTextEditorModeFontPicker:
-            // deny open keyboard
-            return NO;
-            
-        default:
-            // remove controls from outside of event chain
-            [self performSelector:@selector(applyTapEditorMode) withObject:nil afterDelay:0.001];
-            return NO;
+    // NSLog(@"[%d] textViewShouldBeginEditing: %d (o:%d,c:%d)", self.tag, _editorMode, self.isOpening, self.isClosing);
+    
+    // allow open keyboard if we are opening our keyboard
+    if (self.isOpening) {
+        return YES;
     }
+    
+    // hide keyboard otherwise at first, and open our editor then
+    [self.superview endEditing:NO];
+    [self performSelector:@selector(applyTapEditorMode) withObject:nil afterDelay:0.001];
+    return NO;
 }
 
 - (void)applyTapEditorMode
 {
-    self.editorMode = self.tapEditorMode;
+    KWTextEditorMode newMode = (self.editorMode != KWTextEditorModeNone) ? self.editorMode : self.tapEditorMode;
+    // NSLog(@"[%d] applyTapEditorMode: %d -> %d", self.tag, self.editorMode, newMode);
+    self.editorMode = newMode;
 }
 
 - (void)textViewDidBeginEditing:(UITextView *)textView
 {
-    if (self.keyboardIsOpen) {
+    // NSLog(@"[%d] textViewDidBeginEditing: %d (o:%d,c:%d)", self.tag, _editorMode, self.isOpening, self.isClosing);
+    
+    if (! self.isOpening) {
         [self showToolbarUponKeyboard];
     }
 }
@@ -161,13 +178,21 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
 
 - (BOOL)textViewShouldEndEditing:(UITextView *)textView
 {
-    [self closeTextEditor];
+    // NSLog(@"[%d] textViewShouldEndEditing: %d (o:%d,c:%d)", self.tag, _editorMode, self.isOpening, self.isClosing);
+    
+    if (! self.isClosing) {
+        [self closeTextEditor];
+    }
     return YES;
 }
 
 - (void)textViewDidEndEditing:(UITextView *)textView
 {
-    [self closeTextEditor];
+    // NSLog(@"[%d] textViewDidEndEditing: %d (o:%d,c:%d)", self.tag, _editorMode, self.isOpening, self.isClosing);
+    
+    if (self.isClosing) {
+        [self didCloseTextEditor];
+    }
 }
 
 -(void)showInView:(UIView*)view
@@ -175,6 +200,36 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
     self.hidden = YES;
     [view addSubview:self];
     [self openTextEditor];
+}
+
+- (void)setFontPickerEnabled:(BOOL)enabled
+{
+    _fontPickerEnabled = enabled;
+    if (enabled) {
+        _tapEditorMode = KWTextEditorModeFontPicker;
+        return;
+    }
+    if (self.editorMode == KWTextEditorModeFontPicker) {
+        _editorMode = KWTextEditorModeKeyboard;
+    }
+    if (self.tapEditorMode == KWTextEditorModeFontPicker) {
+        _tapEditorMode = KWTextEditorModeKeyboard;
+    }
+}
+
+- (void)setKeyboardEnabled:(BOOL)enabled
+{
+    _keyboardEnabled = enabled;
+    if (enabled) {
+        _tapEditorMode = KWTextEditorModeKeyboard;
+        return;
+    }
+    if (self.editorMode == KWTextEditorModeKeyboard) {
+        _editorMode = KWTextEditorModeFontPicker;
+    }
+    if (self.tapEditorMode == KWTextEditorModeKeyboard) {
+        _tapEditorMode = KWTextEditorModeFontPicker;
+    }
 }
 
 // getter (lazy build)
@@ -236,22 +291,6 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
         [_toolbar removeFromSuperview];
     }
     
-    // toolbar buttons
-    _keyboardButton = [[UIBarButtonItem alloc] initWithTitle:@"Keyboard"
-                                                       style:UIBarButtonItemStyleBordered
-                                                      target:self
-                                                      action:@selector(keyboardButtonClicked:)];
-    _fontButton = [[UIBarButtonItem alloc] initWithTitle:@"Font"
-                                                   style:UIBarButtonItemStyleBordered
-                                                  target:self
-                                                  action:@selector(fontButtonClicked:)];
-    _closeButton = [[UIBarButtonItem alloc] initWithTitle:@"Close"
-                                                    style:UIBarButtonItemStyleBordered
-                                                   target:self
-                                                   action:@selector(closeButtonClicked:)];
-    self.keyboardButton.width = 80;
-    self.fontButton.width = 80;
-    self.closeButton.width = 80;
     UIBarButtonItem *flexSpacer = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:
                                    UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
     
@@ -268,9 +307,43 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
     CGFloat toolbarHeight = (windowRect.size.height <= 320) ? 32 : 40; // FIXED
     CGRect frame = CGRectMake(0, 0, windowRect.size.width, toolbarHeight);
     _toolbar = [[UIToolbar alloc] initWithFrame:frame];
-    _toolbar.barStyle = UIBarStyleBlack;
+    _toolbar.barStyle = UIBarStyleBlackTranslucent;
+    //    _toolbar.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
     _toolbar.items = barItems;
     [self addSubview:_toolbar];
+}
+
+- (UIBarButtonItem*)keyboardButton
+{
+    if (_keyboardButton) return _keyboardButton;
+    _keyboardButton = [[UIBarButtonItem alloc] initWithTitle:@"Keyboard"
+                                                       style:UIBarButtonItemStyleBordered
+                                                      target:self
+                                                      action:@selector(keyboardButtonClicked:)];
+    _keyboardButton.width = KWTextEditorButtonWidth;
+    return _keyboardButton;
+}
+
+- (UIBarButtonItem*)fontButton
+{
+    if (_fontButton) return _fontButton;
+    _fontButton = [[UIBarButtonItem alloc] initWithTitle:@"Font"
+                                                   style:UIBarButtonItemStyleBordered
+                                                  target:self
+                                                  action:@selector(fontButtonClicked:)];
+    _fontButton.width = KWTextEditorButtonWidth;
+    return _fontButton;
+}
+
+- (UIBarButtonItem*)closeButton
+{
+    if (_closeButton) return _closeButton;
+    _closeButton = [[UIBarButtonItem alloc] initWithTitle:@"Close"
+                                                    style:UIBarButtonItemStyleBordered
+                                                   target:self
+                                                   action:@selector(closeButtonClicked:)];
+    _closeButton.width = KWTextEditorButtonWidth;
+    return _closeButton;
 }
 
 - (void)setEditorMode:(KWTextEditorMode)editorMode
@@ -285,16 +358,17 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
         editorMode = KWTextEditorModeNone;
     }
     
+    // NSLog(@"[%d] setEditorMode: ******** %d -> %d (o:%d,c:%d)", self.tag, _editorMode, editorMode, self.isOpening, self.isClosing);
+    
     if (self.window) {
         if (_editorMode == KWTextEditorModeNone) {
             // open an editor
             _editorMode = editorMode;
             [self openTextEditor];
         } else {
-            // close current editor, at first, then open new one
+            // close current editor at first, then open new one
             self.nextEditorMode = editorMode;
             [self closeTextEditor];
-            [self performSelector:@selector(applyNextEditorMode:) withObject:[NSNumber numberWithInteger:editorMode] afterDelay:KWTextEditorAnimationDuration*2];
         }
     } else {
         // don't open an editor when not shown
@@ -302,9 +376,10 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
     }
 }
 
-- (void)applyNextEditorMode:(id)obj
+- (void)openNextEditor
 {
     if (! self.nextEditorMode) return;
+    // NSLog(@"[%d] openNextEditor: ******** %d -> %d", self.tag, _editorMode, self.nextEditorMode);
     
     KWTextEditorMode nextMode = self.nextEditorMode;
     self.nextEditorMode = KWTextEditorModeNone;
@@ -313,20 +388,25 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
 
 - (void)openTextEditor
 {
-    
-    [self addNotificationObservers];
+    // NSLog(@"[%d] openTextEditor: ======== %d (o:%d,c:%d)", self.tag, _editorMode, self.isOpening, self.isClosing);
+    if (self.isOpening || self.isClosing) return;
+    self.isOpening = YES;
     
     switch (self.editorMode) {
         case KWTextEditorModeKeyboard:
+            [self addNotificationObservers];
             [self openKeyboard];
             break;
             
         case KWTextEditorModeFontPicker:
+            [self addNotificationObservers];
             [self openFontPicker];
             break;
             
         default:
-            [self hideControls];
+            self.isOpening = NO;
+            self.hidden = YES;
+            self.frame = CGRectZero;
             break;
     }
     
@@ -334,12 +414,27 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
     self.fontButton.tintColor = (self.editorMode == KWTextEditorModeFontPicker) ? [UIColor blackColor] : nil;
 }
 
+- (void)didOpenTextEditor
+{
+    if (! self.isOpening) return;
+    self.isOpening = NO;
+    // NSLog(@"[%d] didOpenTextEditor: ======== %d (o:%d,c:%d)", self.tag, _editorMode, self.isOpening, self.isClosing);
+    
+    CGRect endRect = [self.window convertRect:self.frame fromView:self.superview];
+    [self postNotificationWithName:KWTextEditorDidShowNotification endFrame:endRect];
+    if (self.editorDidShowHandler) {
+        self.editorDidShowHandler();
+    }
+}
+
 - (void)closeTextEditor
 {
+    // NSLog(@"[%d] closeTextEditor: ======== %d -> %d (o:%d,c:%d) next=%d", self.tag, _editorMode, KWTextEditorModeNone, self.isOpening, self.isClosing, self.nextEditorMode);
+    if (self.isOpening || self.isClosing) return;
+    self.isClosing = YES;
+    
     KWTextEditorMode currentMode = _editorMode;
     _editorMode = KWTextEditorModeNone;
-    
-    [self restoreScrollViewAnimated:YES];
     
     switch (currentMode) {
         case KWTextEditorModeKeyboard:
@@ -351,9 +446,29 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
             break;
             
         default:
-            [self hideControls];
+            self.isClosing = NO;
+            self.hidden = YES;
+            self.frame = CGRectZero;
+            [self openNextEditor];
             break;
     }
+}
+
+- (void)didCloseTextEditor
+{
+    if (! self.isClosing) return;
+    self.isClosing = NO;
+    // NSLog(@"[%d] didCloseTextEditor: ======== %d (o:%d,c:%d)", self.tag, _editorMode, self.isOpening, self.isClosing);
+    
+    self.hidden = YES;
+    self.frame = CGRectZero;
+    [self restoreScrollViewAnimated:NO completion:nil];
+    [self removeNotificationObservers];
+    [self postNotificationWithName:KWTextEditorDidHideNotification endFrame:CGRectZero];
+    if (self.editorDidHideHandler) {
+        self.editorDidHideHandler();
+    }
+    [self performSelector:@selector(openNextEditor) withObject:nil afterDelay:0.01];
 }
 
 - (void)keyboardButtonClicked:(id)sender
@@ -370,7 +485,13 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
 
 - (void)closeButtonClicked:(id)sender
 {
-    [self closeTextEditor];
+    // NSLog(@"[%d] closeButtonClicked: %d", self.tag, _editorMode);
+    
+    // force to close
+    self.isOpening = NO;
+    self.isClosing = NO;
+    
+    self.editorMode = KWTextEditorModeNone;
     
     if (self.closeButtonDidTapHandler) {
         self.closeButtonDidTapHandler();
@@ -379,38 +500,49 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
 
 - (void)openFontPicker
 {
-    [self.superview endEditing:YES];
+    [self.superview endEditing:NO];
     
+    CGRect prevRect = [self.superview convertRect:self.frame fromView:self.superview];
     CGRect windowRect = [self.superview convertRect:self.window.frame fromView:self.window];
     
     // redraw toolbar if width changed (mostly device rotation)
-    CGRect toolbarRect = self.toolbar.frame;
+    CGRect toolbarRect = [self.superview convertRect:self.toolbar.frame fromView:self];
     if (toolbarRect.size.width != windowRect.size.width) {
         [self renewToolbar];
-        toolbarRect = self.toolbar.frame;
+        toolbarRect = [self.superview convertRect:self.toolbar.frame fromView:self];
     }
     
     // redraw font picker if width changed (mostly device rotation)
-    CGRect pickerRect = self.fontPicker.frame;
+    CGRect pickerRect = [self.superview convertRect:self.fontPicker.frame fromView:self];
     if (pickerRect.size.width != windowRect.size.width) {
         [self renewFontPicker];
-        pickerRect = self.fontPicker.frame;
+        pickerRect = [self.superview convertRect:self.fontPicker.frame fromView:self];
     }
     
-    // no need to move toolbar+picker
-    CGRect viewRect    = CGRectZero;
-    viewRect.size      = CGSizeMake(toolbarRect.size.width, toolbarRect.size.height + pickerRect.size.height);
-    viewRect.origin    = CGPointMake(windowRect.origin.x, windowRect.origin.y + windowRect.size.height - viewRect.size.height);
+    CGSize viewSize = CGSizeZero;
+    viewSize.width = MAX(toolbarRect.size.width, pickerRect.size.width);
+    viewSize.height = toolbarRect.size.height + pickerRect.size.height;
+    
+    CGRect hideRect = CGRectZero;
+    hideRect.origin.x = windowRect.origin.x;
+    hideRect.origin.y = windowRect.origin.y + windowRect.size.height;
+    hideRect.size = viewSize;
+    CGRect showRect = CGRectZero;
+    showRect.origin.x = windowRect.origin.x;
+    showRect.origin.y = windowRect.origin.y + windowRect.size.height - viewSize.height;
+    showRect.size = viewSize;
     toolbarRect.origin = CGPointZero;
     pickerRect.origin  = CGPointMake(0, toolbarRect.size.height);
-    if (self.fontPickerIsOpen && CGRectEqualToRect(self.frame, viewRect)) return;
+    
+    BOOL animated = ! CGRectEqualToRect(prevRect, showRect);
+    
+    // NSLog(@"[%d] openFontPicker: -------- animated=%d", self.tag, animated);
     
     // apply new position
-    self.frame = viewRect;
+    self.hidden = YES;
+    self.frame = hideRect;
     self.toolbar.frame = toolbarRect;
     self.fontPicker.frame = pickerRect;
-    self.transform = CGAffineTransformMakeTranslation(0, viewRect.size.height);
-    CGAffineTransform destTransform = CGAffineTransformMakeTranslation(0, 0);
     
     // apply current text attributes on font picker
     self.fontPicker.font  = self.textView.font;
@@ -418,43 +550,80 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
     self.fontPicker.text  = self.textView.text;
     [self.fontPicker reloadAllComponents];
     
+    // post notification for other KWTextEditor instances
+    CGRect endRect = [self.window convertRect:showRect fromView:self.superview];
+    [self postNotificationWithName:KWTextEditorWillShowNotification endFrame:endRect];
+    
     // show all
     self.toolbar.hidden = NO;
     self.fontPicker.hidden = NO;
     self.hidden = NO;
     [self.superview bringSubviewToFront:self];
     
-    // show up from window bottom
-    __block BOOL once = NO;
     __weak KWTextEditor *bself = self;
-    [UIView animateWithDuration:KWTextEditorAnimationDuration animations:^{
-        bself.transform = destTransform;
-    } completion:^(BOOL finished) {
+    void (^completion)(void) = ^{
+        [bself didOpenTextEditor];
+    };
+    
+    void (^animations)(void) = ^{
+        bself.frame = showRect;
+    };
+    
+    __block BOOL once = NO;
+    void (^afinished)(BOOL) = ^(BOOL finished){
         if (once) return;
         once = YES;
-        [self shortenScrollViewAnimated:YES];
-        if (bself.fontPickerDidShowHandler) {
-            bself.fontPickerDidShowHandler();
-        }
-    }];
+        [bself shortenScrollViewAnimated:animated completion:completion];
+    };
+    
+    if (animated) {
+        [UIView animateWithDuration:KWTextEditorAnimationDuration animations:animations completion:afinished];
+    } else {
+        animations();
+        afinished(YES);
+    }
 }
 
 - (void)closeFontPicker
 {
-    CGRect windowRect = [self convertRect:self.window.frame fromView:self.window];
-    self.transform = CGAffineTransformMakeTranslation(0, 0);
-    CGFloat windowBottom = windowRect.origin.y + windowRect.size.height;
-    CGAffineTransform destTransform = CGAffineTransformMakeTranslation(0, windowBottom);
+    CGRect prevRect = [self.superview convertRect:self.frame fromView:self.superview];
+    CGRect windowRect = [self.superview convertRect:self.window.frame fromView:self.window];
+    
+    CGRect hideRect = CGRectZero;
+    hideRect.origin.x = prevRect.origin.x;
+    hideRect.origin.y = windowRect.origin.y + windowRect.size.height;
+    hideRect.size = prevRect.size;
+    
+    BOOL animated = self.fontPickerIsOpen && ! CGRectEqualToRect(prevRect, hideRect);
+    
+    // NSLog(@"[%d] closeFontPicker: -------- animated=%d", self.tag, animated);
+    
+    // post notification for other KWTextEditor instances
+    CGRect endRect = [self.window convertRect:hideRect fromView:self.superview];
+    [self postNotificationWithName:KWTextEditorWillHideNotification endFrame:endRect];
+    
+    __weak KWTextEditor *bself = self;
+    void (^completion)(void) = ^{
+        [bself didCloseTextEditor];
+    };
+    
+    void (^animations)(void) = ^{
+        bself.frame = hideRect;
+    };
     
     __block BOOL once = NO;
-    __weak KWTextEditor *bself = self;
-    [UIView animateWithDuration:KWTextEditorAnimationDuration animations:^{
-        bself.transform = destTransform;
-    } completion:^(BOOL finished) {
+    void (^afinished)(BOOL) = ^(BOOL finished){
         if (once) return;
         once = YES;
-        [bself hideControls];
-    }];
+        [bself restoreScrollViewAnimated:animated completion:completion];
+    };
+    
+    if (animated) {
+        [UIView animateWithDuration:KWTextEditorAnimationDuration animations:animations completion:afinished];
+    } else {
+        animations();
+        afinished(YES);
+    }
 }
 
 - (BOOL)fontPickerIsOpen
@@ -466,22 +635,28 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
 {
     if (! self.window) return;
     if (! self.textView.window) return;
-    if (! self.textView.canBecomeFirstResponder) {
-        return;
-    }
     
-    [self.textView becomeFirstResponder];
+    // NSLog(@"[%d] openKeyboard: -------- canBecomeFirstResponder=%d", self.tag, self.textView.canBecomeFirstResponder);
+    
+    if (self.textView.canBecomeFirstResponder) {
+        [self.textView becomeFirstResponder];
+    }
 }
 
 - (void)closeKeyboard
 {
     if (! self.window) return;
     if (! self.textView.window) return;
-    if (! self.textView.canResignFirstResponder) {
-        return;
+    
+    // NSLog(@"[%d] closeKeyboard: -------- canResignFirstResponder=%d", self.tag, self.textView.canResignFirstResponder);
+    
+    if (self.textView.canResignFirstResponder) {
+        [self.textView resignFirstResponder];
     }
     
-    [self.textView resignFirstResponder];
+    if (self.isClosing) {
+        [self didCloseTextEditor];
+    }
 }
 
 - (BOOL)keyboardIsOpen
@@ -489,36 +664,10 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
     return (! self.hidden && _fontPicker.hidden && ! _toolbar.hidden);
 }
 
-- (void)hideControls
-{
-    if (self.hidden) return;
-    
-    BOOL keyboardWasOpen = self.keyboardIsOpen;
-    BOOL fontPickerWasOpen = self.fontPickerIsOpen;
-    
-    // remove any controls
-    self.frame = CGRectZero;
-    self.hidden = YES;
-    _editorMode = KWTextEditorModeNone;
-    
-    [self restoreScrollViewAnimated:YES];
-    [self removeNotificationObservers];
-    
-    if (keyboardWasOpen) {
-        if (self.keyboardDidHideHandler) {
-            self.keyboardDidHideHandler();
-        }
-    } else if (fontPickerWasOpen) {
-        if (self.fontPickerDidHideHandler) {
-            self.fontPickerDidHideHandler();
-        }
-    }
-}
-
 - (void)showToolbarUponKeyboard
 {
     // ignore keyboard is not shown
-    CGRect keyboardRect = [self.superview convertRect:self.lastKeyboardRect fromView:self.window];
+    CGRect keyboardRect = [self.superview convertRect:latestKeyboardRect fromView:self.window];
     if (!(keyboardRect.size.height > 0)) return;
     
     // redraw toolbar if width changed (mostly device rotation)
@@ -528,12 +677,19 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
         toolbarRect = [self.superview convertRect:self.toolbar.frame fromView:self];
     }
     
-    // no need to move toolbar if keyboard is not changed
     CGRect viewRect    = CGRectZero;
     viewRect.size      = CGSizeMake(toolbarRect.size.width, toolbarRect.size.height);
     viewRect.origin    = CGPointMake(keyboardRect.origin.x, keyboardRect.origin.y - toolbarRect.size.height);
     toolbarRect.origin = CGPointZero;
-    if (self.keyboardIsOpen && CGRectEqualToRect(self.frame, viewRect)) return;
+    
+    // no need to move toolbar if keyboard is not changed
+    BOOL animated = ! (self.keyboardIsOpen && CGRectEqualToRect(self.frame, viewRect));
+    
+    // NSLog(@"[%d] showToolbarUponKeyboard: animated=%d", self.tag, animated);
+    
+    // post notification
+    CGRect endRect = [self.window convertRect:viewRect fromView:self.superview];
+    [self postNotificationWithName:KWTextEditorWillShowNotification endFrame:endRect];
     
     // move toolbar to new position without animation
     self.transform = CGAffineTransformIdentity;
@@ -546,73 +702,130 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
     self.hidden = NO;
     [self.superview bringSubviewToFront:self];
     
-    [self shortenScrollViewAnimated:YES];
+    __weak KWTextEditor *bself = self;
+    void (^completion)(void) = ^{
+        [bself didOpenTextEditor];
+    };
     
-    if (self.keyboardDidShowHandler) {
-        self.keyboardDidShowHandler();
-    }
+    [self shortenScrollViewAnimated:animated completion:completion];
 }
 
 - (void)keyboardWillShow:(NSNotification*)notification
 {
-    // don't hide controls here as keyboardWillShow will called before it's opened
-    // [self hideControls];
+    // NSLog(@"[%d] %@: isFirstResponder=%d", self.tag, notification.name, self.textView.isFirstResponder);
+    
+    if (self.textView.isFirstResponder) {
+        // wait to show toolbar until keyboard is shown
+    } else {
+        [self closeTextEditor];
+    }
 }
 
 - (void)keyboardDidShow:(NSNotification*)notification
 {
+    // NSLog(@"[%d] %@: isFirstResponder=%d", self.tag, notification.name, self.textView.isFirstResponder);
+    
     // remember last keyboard size updated
     CGRect keyboardRect = [[notification.userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
-    self.lastKeyboardRect = keyboardRect;
+    latestKeyboardRect = keyboardRect;
     
     if (self.textView.isFirstResponder) {
         [self showToolbarUponKeyboard];
     } else {
-        [self hideControls];
+        [self closeTextEditor];
     }
 }
 
 - (void)keyboardDidChange:(NSNotification*)notification
 {
+    // NSLog(@"[%d] %@: isFirstResponder=%d", self.tag, notification.name, self.textView.isFirstResponder);
+    
     // remember last keyboard size updated
     CGRect keyboardRect = [[notification.userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
-    self.lastKeyboardRect = keyboardRect;
+    latestKeyboardRect = keyboardRect;
     
     if (self.textView.isFirstResponder) {
-        // update toolbar after its shown
+        // update toolbar position if already shown
         if (self.keyboardIsOpen) {
             [self showToolbarUponKeyboard];
         }
     } else {
-        [self hideControls];
+        [self closeTextEditor];
     }
 }
 
 - (void)keyboardWillHide:(NSNotification*)notification
 {
-    [self hideControls];
+    // NSLog(@"[%d] %@: isFirstResponder=%d", self.tag, notification.name, self.textView.isFirstResponder);
     
-    // reset last keyboard size as empty because closed
-    self.lastKeyboardRect = CGRectZero;
+    if (! self.isClosing) {
+        [self closeTextEditor];
+    }
 }
 
 - (void)keyboardDidHide:(NSNotification*)notification
 {
-    [self hideControls];
+    // NSLog(@"[%d] %@: isFirstResponder=%d", self.tag, notification.name, self.textView.isFirstResponder);
     
-    // reset last keyboard size as empty because closed
-    self.lastKeyboardRect = CGRectZero;
+    if (self.isClosing) {
+        [self didCloseTextEditor];
+    }
 }
 
-- (void)shortenScrollViewAnimated:(BOOL)animated
+- (void)textEditorWillShow:(NSNotification*)notification
 {
-    if (! self.scrollView) return;
+    KWTextEditor* textEditor = (KWTextEditor*) notification.object;
+    BOOL noticedByMe = (self == textEditor);
+    // NSLog(@"[%d] %@: noticedByMe=%@", self.tag, notification.name, noticedByMe ? @"YES" : @"NO");
+    
+    // close my self when another open
+    if (! noticedByMe) {
+        [self closeTextEditor];
+    }
+}
+
+- (void)textEditorDidShow:(NSNotification*)notification
+{
+    KWTextEditor* textEditor = (KWTextEditor*) notification.object;
+    BOOL noticedByMe = (self == textEditor);
+    // NSLog(@"[%d] %@: noticedByMe=%@", self.tag, notification.name, noticedByMe ? @"YES" : @"NO");
+    
+    if (! noticedByMe) {
+        [self closeTextEditor];
+    }
+}
+
+- (void)textEditorWillHide:(NSNotification*)notification
+{
+}
+
+- (void)textEditorDidHide:(NSNotification*)notification
+{
+}
+
+- (void)postNotificationWithName:(NSString*)name endFrame:(CGRect)endFrame
+{
+    NSValue *endValue = [NSValue valueWithCGRect:endFrame];
+    NSNumber *ducation = [NSNumber numberWithDouble:KWTextEditorAnimationDuration];
+    NSDictionary *userInfo = @{ KWTextEditorFrameEndUserInfoKey: endValue, KWTextEditorAnimationDurationUserInfoKey: ducation };
+    NSNotification *notification = [NSNotification notificationWithName:name object:self userInfo:userInfo];
+    [[NSNotificationCenter defaultCenter] postNotification:notification];
+}
+
+- (void)shortenScrollViewAnimated:(BOOL)animated completion:(void(^)(void))completion
+{
+    if (! self.scrollView) {
+        if (completion) completion();
+        return;
+    }
     
     // restore before shorten
-    // [self restoreScrollViewAnimated:NO];
+    [self restoreScrollViewAnimated:NO completion:nil];
     
-    CGPoint textTop = CGPointMake(0, self.textView.frame.origin.y - 2);
-    CGPoint textBottom = CGPointMake(0, self.textView.frame.origin.y + self.textView.frame.size.height + 2);
+    // NSLog(@"[%d] shortenScrollViewAnimated: animated=%d", self.tag, animated);
+    
+    CGPoint textTop = CGPointMake(0, self.textView.frame.origin.y);
+    CGPoint textBottom = CGPointMake(0, self.textView.frame.origin.y + self.textView.frame.size.height);
     CGPoint toolbarTop = CGPointMake(0, self.toolbar.frame.origin.y);
     CGPoint contentTop = CGPointMake(0, 0);
     CGPoint contentBottom = CGPointMake(0, self.scrollView.contentSize.height);
@@ -631,7 +844,10 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
     CGFloat paddingY = insetBottom.y - toolbarTop.y;
     
     // no need to change insets
-    if (paddingY < 0) return;
+    if (paddingY < 0)  {
+        if (completion) completion();
+        return;
+    }
     
     // scroll to show top or bottom of TextView
     CGPoint newOffset = CGPointMake(self.scrollView.contentOffset.x, self.scrollView.contentOffset.y);
@@ -664,58 +880,72 @@ static CGFloat KWTextEditorAnimationDuration = 0.3;
     self.ourContentInsets = UIEdgeInsetsMake(ci.top, ci.left, ci.bottom + paddingY, ci.right);
     self.ourScrollInsets = UIEdgeInsetsMake(si.top, si.left, si.bottom + paddingY, si.right);
     
-    if (! animated) {
-        self.scrollView.contentInset = self.ourContentInsets;
-        self.scrollView.scrollIndicatorInsets = self.ourScrollInsets;
-        self.scrollView.contentOffset = newOffset;
-        return;
-    }
-    
-    // update scroll view insets with animation
-    __block BOOL once = NO;
     __weak KWTextEditor *bself = self;
-    [UIView animateWithDuration:KWTextEditorAnimationDuration/2 animations:^{
+    void (^animations)(void) = ^{
         bself.scrollView.contentInset = bself.ourContentInsets;
         bself.scrollView.scrollIndicatorInsets = bself.ourScrollInsets;
         bself.scrollView.contentOffset = newOffset;
-    } completion:^(BOOL finished) {
+    };
+    
+    __block BOOL once = NO;
+    void (^afinished)(BOOL) = ^(BOOL finished){
         if (once) return;
         once = YES;
-        // do nothing
-    }];
+        if (completion) completion();
+    };
+    
+    if (animated) {
+        [UIView animateWithDuration:KWTextEditorAnimationDuration/2 animations:animations completion:afinished];
+    } else {
+        animations();
+        afinished(YES);
+    }
 }
 
-- (void)restoreScrollViewAnimated:(BOOL)animated
+- (void)restoreScrollViewAnimated:(BOOL)animated completion:(void(^)(void))completion
 {
-    if (! self.scrollView) return;
-    if (! self.hasSavedInsets) return;
+    // NSLog(@"[%d] restoreScrollViewAnimated: hasSavedInsets=%d", self.tag, self.hasSavedInsets);
+    
+    if (! self.scrollView || ! self.hasSavedInsets) {
+        if (completion) completion();
+        return;
+    }
     
     // test current insets are defined by us
     BOOL restoreContentInset = UIEdgeInsetsEqualToEdgeInsets(self.scrollView.contentInset, self.ourContentInsets);
     BOOL restoreScrollInset  = UIEdgeInsetsEqualToEdgeInsets(self.scrollView.scrollIndicatorInsets, self.ourScrollInsets);
+    // NSLog(@"[%d] restoreScrollViewAnimated: restoreContentInset=%d restoreScrollInset=%d", self.tag, restoreContentInset, restoreScrollInset);
     
     // no need to restore insets when changed by someone else
-    if (! restoreContentInset && ! restoreScrollInset) return;
-    
-    if (! animated) {
-        self.hasSavedInsets = NO;
-        self.scrollView.contentInset = self.savedContentInsets;
-        self.scrollView.scrollIndicatorInsets = self.savedScrollInsets;
+    if (! restoreContentInset && ! restoreScrollInset) {
+        if (completion) completion();
         return;
     }
     
-    // restore with animation
-    __block BOOL once = NO;
+    // NSLog(@"[%d] restoreScrollViewAnimated: animated=%d", self.tag, animated);
+    
+    self.hasSavedInsets = NO;
+    
     __weak KWTextEditor *bself = self;
-    [UIView animateWithDuration:KWTextEditorAnimationDuration/2 animations:^{
+    void (^animations)(void) = ^{
         bself.scrollView.contentInset = bself.savedContentInsets;
         bself.scrollView.scrollIndicatorInsets = bself.savedScrollInsets;
         bself.scrollView.contentOffset = bself.savedContentOffset;
-    } completion:^(BOOL finished) {
+    };
+    
+    __block BOOL once = NO;
+    void (^afinished)(BOOL) = ^(BOOL finished){
         if (once) return;
         once = YES;
-        bself.hasSavedInsets = NO;
-    }];
+        if (completion) completion();
+    };
+    
+    if (animated) {
+        [UIView animateWithDuration:KWTextEditorAnimationDuration/2 animations:animations completion:afinished];
+    } else {
+        animations();
+        afinished(YES);
+    }
 }
 
 @end
