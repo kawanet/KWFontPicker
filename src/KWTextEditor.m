@@ -264,9 +264,10 @@ NSString *const KWTextEditorAnimationDurationUserInfoKey = @"KWTextEditorAnimati
     
     // set callback handler
     __weak KWTextEditor *bself = self;
+    __weak KWFontPicker *bfontPicker = _fontPicker;
     [_fontPicker setChangeHandler:^{
-        bself.textView.font      = _fontPicker.font;
-        bself.textView.textColor = _fontPicker.color;
+        bself.textView.font      = bfontPicker.font;
+        bself.textView.textColor = bfontPicker.color;
         if (bself.fontDidChangeHandler) {
             bself.fontDidChangeHandler();
         }

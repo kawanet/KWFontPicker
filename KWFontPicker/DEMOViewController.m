@@ -91,10 +91,11 @@
         NSLog(@"fontDidChangeHandler: fontName=%@ pointSize=%.1f", textView.font.fontName, textView.font.pointSize);
     }];
     
+    __weak KWTextEditor* _textEditor = textEditor;
     [textEditor setEditorDidShowHandler:^{
         NSString *mode = @"";
-        if (textEditor.editorMode == KWTextEditorModeKeyboard) mode = @"keyboard";
-        if (textEditor.editorMode == KWTextEditorModeFontPicker) mode = @"font picker";
+        if (_textEditor.editorMode == KWTextEditorModeKeyboard) mode = @"keyboard";
+        if (_textEditor.editorMode == KWTextEditorModeFontPicker) mode = @"font picker";
         NSLog(@"editorDidShowHandler: %@", mode);
     }];
     
