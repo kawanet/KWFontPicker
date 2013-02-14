@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1D358A3016CCB3C3004B96F9 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 1D358A2F16CCB3C3004B96F9 /* README.md */; };
+		1D358A3216CCB3D0004B96F9 /* KWFontPicker.podspec in Resources */ = {isa = PBXBuildFile; fileRef = 1D358A3116CCB3D0004B96F9 /* KWFontPicker.podspec */; };
 		1DA3C8C9169D1260003DFDBC /* KWFontPicker.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DA3C8C6169D1260003DFDBC /* KWFontPicker.m */; };
 		1DA3C8CA169D1260003DFDBC /* KWTextEditor.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DA3C8C8169D1260003DFDBC /* KWTextEditor.m */; };
 		1DD9FA7B169D084500DFF1C9 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1DD9FA7A169D084500DFF1C9 /* UIKit.framework */; };
@@ -23,6 +25,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1D358A2F16CCB3C3004B96F9 /* README.md */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = README.md; sourceTree = "<group>"; };
+		1D358A3116CCB3D0004B96F9 /* KWFontPicker.podspec */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = KWFontPicker.podspec; sourceTree = "<group>"; };
 		1DA3C8C5169D1260003DFDBC /* KWFontPicker.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = KWFontPicker.h; sourceTree = "<group>"; };
 		1DA3C8C6169D1260003DFDBC /* KWFontPicker.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = KWFontPicker.m; sourceTree = "<group>"; };
 		1DA3C8C7169D1260003DFDBC /* KWTextEditor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = KWTextEditor.h; sourceTree = "<group>"; };
@@ -73,6 +77,8 @@
 		1DD9FA6B169D084500DFF1C9 = {
 			isa = PBXGroup;
 			children = (
+				1D358A3116CCB3D0004B96F9 /* KWFontPicker.podspec */,
+				1D358A2F16CCB3C3004B96F9 /* README.md */,
 				1DA3C8C4169D1260003DFDBC /* src */,
 				1DD9FA80169D084500DFF1C9 /* KWFontPicker */,
 				1DD9FA79169D084500DFF1C9 /* Frameworks */,
@@ -182,6 +188,8 @@
 				1DD9FA8F169D084500DFF1C9 /* Default@2x.png in Resources */,
 				1DD9FA91169D084500DFF1C9 /* Default-568h@2x.png in Resources */,
 				1DD9FA94169D084500DFF1C9 /* MainStoryboard.storyboard in Resources */,
+				1D358A3016CCB3C3004B96F9 /* README.md in Resources */,
+				1D358A3216CCB3D0004B96F9 /* KWFontPicker.podspec in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
