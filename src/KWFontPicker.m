@@ -399,14 +399,14 @@ static CGFloat KWFontPickerCellHeight = 30;
     return KWFontPickerCellHeight;
 }
 
-- (NSAttributedString *)pickerView:(UIPickerView *)pickerView attributedTitleForRow:(NSInteger)row forComponent:(NSInteger)component
+- (UIView *)pickerView:(UIPickerView *)pickerView viewForRow:(NSInteger)row forComponent:(NSInteger)component reusingView:(UIView *)view;
 {
     NSString *string;
     CGFloat size = 18;
     UIFont *font = [UIFont systemFontOfSize:size];
-    NSMutableParagraphStyle *paraStyle=[[NSMutableParagraphStyle alloc] init];
-    UIColor *foreColor = [UIColor blackColor];
-    UIColor *backColor = [UIColor clearColor];
+    UILabel* label = [[UILabel alloc] init];
+    label.backgroundColor = [UIColor clearColor];
+    CGFloat width = KWFontPickerCellWitdh;
     
     if (component == self.fontComponentIndex) {
         if (self.fontList.count <= row) return nil;
@@ -414,6 +414,13 @@ static CGFloat KWFontPickerCellHeight = 30;
         if ([fontName hasPrefix:@"Zapfino"]) size *= 0.667;
         font = [UIFont fontWithName:fontName size:size];
         string = self.text.length ? self.text : fontName;
+        
+        label.font = font;
+        
+        width = self.frame.size.width - 30;
+        width = width - KWFontPickerCellWitdh * 2;
+        width = MAX(width, KWFontPickerCellWitdh);
+        
     } else if (component == self.sizeComponentIndex) {
         if (self.sizeList.count <= row) return nil;
         NSNumber *fontNumber = self.sizeList[row];
@@ -423,21 +430,20 @@ static CGFloat KWFontPickerCellHeight = 30;
         } else {
             string = [NSString stringWithFormat:@"%.1f", fontSize];
         }
-        paraStyle.firstLineHeadIndent = 14;
-        paraStyle.alignment = NSTextAlignmentLeft;
+        
     } else if (component == self.colorComponentIndex) {
         if (self.colorList.count <= row) return nil;
         font = [UIFont systemFontOfSize:24];
         string = @"\u2588\u2588"; // FULL BLOCK x2
-        foreColor = backColor = self.colorList[row];
-        paraStyle.firstLineHeadIndent = 0;
-        paraStyle.alignment = NSTextAlignmentLeft;
+        label.textAlignment = NSTextAlignmentCenter;
+        
+        label.textColor = self.colorList[row];
     }
-    NSDictionary *attributes = @{ NSFontAttributeName: font, NSForegroundColorAttributeName: foreColor, NSBackgroundColorAttributeName: backColor, NSParagraphStyleAttributeName: paraStyle };
-    NSAttributedString *attrString = [[NSAttributedString alloc] initWithString:string attributes:attributes];
-    return attrString;
+    label.text = string;
+    label.frame = CGRectMake(0, 0, width - 20, KWFontPickerCellHeight-10);
+    
+    return label;
 }
-
 - (NSString*)selectedFontName
 {
     NSString *fontName;
