@@ -1,3 +1,5 @@
+UPDATE: iOS5 and iOS7 are supported. Thanks, mave99a and chintan100!
+
 KWFontPicker
 ============
 
@@ -100,10 +102,11 @@ Following handler blocks are available.
     textEditor.fontButton.title = @"FONT";
     textEditor.closeButton.title = @"DONE";
 
-AUTHOR 
-------
+CONTRIBUTORS
+------------
 
-    Yusuke Kawasaki http://www.kawa.net/
+* https://github.com/kawanet
+* https://github.com/mave99a
 
 COPYRIGHT 
 ---------
