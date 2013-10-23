@@ -50,7 +50,8 @@ typedef void(^KWTextEditorHandler)(void);
 
 static CGFloat KWTextEditorAnimationDuration = 0.3;
 static CGFloat KWTextEditorButtonWidth = 80;
-static CGRect latestKeyboardRect;
+static CGRect KWTextEditorLatestKeyboardRect;
+static BOOL KWTextEditorStyleIOS7 = NO;
 
 // currently those notifications are not post for outside of the class
 NSString *const KWTextEditorWillShowNotification = @"KWTextEditorWillShowNotification";
@@ -75,6 +76,9 @@ NSString *const KWTextEditorAnimationDurationUserInfoKey = @"KWTextEditorAnimati
     
     // device orientation detection
     [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
+    
+    // iOS7 Style
+    KWTextEditorStyleIOS7 = ([[[UIDevice currentDevice] systemVersion] floatValue] >= 7);
     
     return self;
 }
@@ -308,8 +312,7 @@ NSString *const KWTextEditorAnimationDurationUserInfoKey = @"KWTextEditorAnimati
     CGFloat toolbarHeight = (windowRect.size.height <= 320) ? 32 : 40; // FIXED
     CGRect frame = CGRectMake(0, 0, windowRect.size.width, toolbarHeight);
     _toolbar = [[UIToolbar alloc] initWithFrame:frame];
-    _toolbar.barStyle = UIBarStyleBlackTranslucent;
-    //    _toolbar.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
+    _toolbar.barStyle = KWTextEditorStyleIOS7 ? UIBarStyleDefault : UIBarStyleBlackTranslucent;
     _toolbar.items = barItems;
     [self addSubview:_toolbar];
 }
@@ -410,9 +413,10 @@ NSString *const KWTextEditorAnimationDurationUserInfoKey = @"KWTextEditorAnimati
             self.frame = CGRectZero;
             break;
     }
-    
-    self.keyboardButton.tintColor = (self.editorMode == KWTextEditorModeKeyboard) ? [UIColor blackColor] : nil;
-    self.fontButton.tintColor = (self.editorMode == KWTextEditorModeFontPicker) ? [UIColor blackColor] : nil;
+
+    UIColor *tintColor = KWTextEditorStyleIOS7 ? [UIColor darkTextColor] : [UIColor darkGrayColor];
+    self.keyboardButton.tintColor = (self.editorMode == KWTextEditorModeKeyboard) ? tintColor : nil;
+    self.fontButton.tintColor = (self.editorMode == KWTextEditorModeFontPicker) ? tintColor : nil;
 }
 
 - (void)didOpenTextEditor
@@ -668,7 +672,7 @@ NSString *const KWTextEditorAnimationDurationUserInfoKey = @"KWTextEditorAnimati
 - (void)showToolbarUponKeyboard
 {
     // ignore keyboard is not shown
-    CGRect keyboardRect = [self.superview convertRect:latestKeyboardRect fromView:self.window];
+    CGRect keyboardRect = [self.superview convertRect:KWTextEditorLatestKeyboardRect fromView:self.window];
     if (!(keyboardRect.size.height > 0)) return;
     
     // redraw toolbar if width changed (mostly device rotation)
@@ -728,7 +732,7 @@ NSString *const KWTextEditorAnimationDurationUserInfoKey = @"KWTextEditorAnimati
     
     // remember last keyboard size updated
     CGRect keyboardRect = [[notification.userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
-    latestKeyboardRect = keyboardRect;
+    KWTextEditorLatestKeyboardRect = keyboardRect;
     
     if (self.textView.isFirstResponder) {
         [self showToolbarUponKeyboard];
@@ -743,15 +747,13 @@ NSString *const KWTextEditorAnimationDurationUserInfoKey = @"KWTextEditorAnimati
     
     // remember last keyboard size updated
     CGRect keyboardRect = [[notification.userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
-    latestKeyboardRect = keyboardRect;
+    KWTextEditorLatestKeyboardRect = keyboardRect;
     
     if (self.textView.isFirstResponder) {
         // update toolbar position if already shown
         if (self.keyboardIsOpen) {
             [self showToolbarUponKeyboard];
         }
-    } else {
-        [self closeTextEditor];
     }
 }
 
