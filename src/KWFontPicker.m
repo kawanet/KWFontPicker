@@ -17,6 +17,8 @@ typedef void(^KWFontPickerHandler)(void);
 @property (copy) KWFontPickerHandler changeHandler;
 @end
 
+static BOOL KWFontPickerStyleIOS7 = NO;
+
 @implementation KWFontPicker {
     NSString *_fontName;
     CGFloat _fontSize;
@@ -42,6 +44,13 @@ static CGFloat KWFontPickerCellHeight = 30;
         self.showsSelectionIndicator = YES;
         self.dataSource = self;
         self.delegate = self;
+        
+        // iOS7 Style
+        KWFontPickerStyleIOS7 = ([[[UIDevice currentDevice] systemVersion] floatValue] >= 7);
+
+        if (KWFontPickerStyleIOS7) {
+            self.backgroundColor = [UIColor colorWithWhite:0.98 alpha:0.98];
+        }
     }
     return self;
 }
@@ -430,13 +439,16 @@ static CGFloat KWFontPickerCellHeight = 30;
         } else {
             string = [NSString stringWithFormat:@"%.1f", fontSize];
         }
+        label.textAlignment = NSTextAlignmentCenter;
         
     } else if (component == self.colorComponentIndex) {
         if (self.colorList.count <= row) return nil;
         font = [UIFont systemFontOfSize:24];
         string = @"\u2588\u2588"; // FULL BLOCK x2
         label.textAlignment = NSTextAlignmentCenter;
-        
+        if (KWFontPickerStyleIOS7) {
+            label.backgroundColor = self.colorList[row];
+        }
         label.textColor = self.colorList[row];
     }
     label.text = string;
